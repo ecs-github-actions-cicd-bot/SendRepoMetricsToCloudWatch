@@ -3,7 +3,7 @@ import time
 import boto3
 import json
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # GitHub API details
 GITHUB_API_URL = "https://api.github.com"
@@ -49,27 +49,39 @@ def fetch_data(url):
       else:
         print(f"Failed to fecth data: {response.status_code}")
         return None
-  return len(items)
+  return items
 
 def fetch_num_open_issues():  
   url_issues = f"{GITHUB_API_URL}/repos/aws-actions/{REPO_NAME}/issues?state=open"
-  return fetch_data(url_issues)
+  data = fetch_data(url_issues)
+  return len(data)
 
 def fetch_num_open_prs():
   url_prs = f"{GITHUB_API_URL}/repos/aws-actions/{REPO_NAME}/pulls?state=open"
-  return fetch_data(url_prs)
+  data = fetch_data(url_prs)
+  return len(data)
 
 def fetch_num_closed_issues():
   url_closed_issues = f"{GITHUB_API_URL}/repos/aws-actions/{REPO_NAME}/issues?state=closed"
-  return fetch_data(url_closed_issues)
+  data = fetch_data(url_closed_issues)
+  return len(data)
 
 def fetch_num_closed_prs_yesterday():
-  today = datetime.utcnow().date()
-  yesterday = today - timedelta(days=1)
-  start_of_yesterday = datetime.combine(yesterday, datetime.min.time())
-  end_of_yesterday = datetime.combine(yesterday, datetime.max.time())
-  url_closed_prs_yesterday = f"{GITHUB_API_URL}/repos/aws-actions/{REPO_NAME}/pulls?state=closed&since={start_of_yesterday.isoformat()}&until={end_of_yesterday.isoformat()}"
-  return fetch_data(url_closed_prs_yesterday)
+  url_closed_prs_yesterday = f"{GITHUB_API_URL}/repos/aws-actions/{REPO_NAME}/pulls?state=closed&sort=updated&direction=desc"
+  data = fetch_data(url_closed_prs_yesterday)
+  now = datetime.now(timezone.utc)
+  yesterday = now - timedelta(days=1)
+
+  merged_count = 0
+  for pr in data:
+      if pr['merged_at']:
+          merged_at = datetime.strptime(pr['merged_at'], "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+          if merged_at >= yesterday:
+            merged_count += 1
+          else:
+            break
+  return merged_count
 
 def upload_metrics_to_cloudwatch(num_issues, num_prs_open, num_prs_closed_yesterday):
 
